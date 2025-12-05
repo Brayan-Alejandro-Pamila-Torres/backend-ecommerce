@@ -188,7 +188,7 @@ router.post('/registrarUsuario', async (req, res) => {
             // ===========================
             try {
                 await resend.emails.send({
-                    from: "Sneakers Clon 5G <noreply@sneakerclon5g.com>",
+                    from: "SneakerClon5G <onboarding@resend.dev>",
                     to: correo,
                     subject: "¡Bienvenido a SNEAKERCLON5G!",
                     html: `
