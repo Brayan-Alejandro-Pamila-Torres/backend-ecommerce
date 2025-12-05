@@ -128,7 +128,7 @@ router.put('/modificarProducto/:id', (req, res) => {
 });
 
 // ========================
-// REGISTRO USUARIO (ya funcionaba)
+// REGISTRO USUARIO 
 // ========================
 
 router.post('/registrarUsuario', async (req, res) => {
@@ -224,7 +224,7 @@ router.post('/responderComentario', async (req, res) => {
                 <p>¡EL ORIGINAL ERES TÚ!</p>
                 <h3>Tu respuesta:</h3>
                 <blockquote style="border-left:3px solid #4CAF50; padding-left:10px; color:#333;">
-                    ${respuesta}
+                    <p>en breve serás atendido. Gracias por ponerte en contacto</p>
                 </blockquote>
             `,
             attachments: [
