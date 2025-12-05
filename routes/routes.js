@@ -2,16 +2,19 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db/conexion');
-const nodemailer = require('nodemailer');
 const { Resend } = require('resend');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const authMiddleware = require("../middleware/authMiddleware");
 const salesController2 = require("../controllers/salesController2");
+const fs = require("fs");
 
-// 2. Inicializar con la clave (automáticamente lee process.env.RESEND_API_KEY si no se la pasas, pero mejor ser explícitos)
+// Inicializar Resend
 const resend = new Resend(process.env.RESEND_API_KEY);
-//ruta para obtener todos los productos
+
+// ========================
+// RUTAS DE PRODUCTOS
+// ========================
 
 router.get('/productos', (req, res) =>{
     const query = 'SELECT * FROM productos';
@@ -26,14 +29,9 @@ router.get('/productos', (req, res) =>{
     });
 });
 
-//ruta para obtener un producto por categoria
-//categoria 1 = hombre
-//categoria 2 = mujer
-//categoria 3 = niñ@s
-
-// Ruta para filtrar productos por categoría (1, 2, etc.)
+// Filtrar productos por categoría
 router.get('/productos/categoria/:id', (req, res) => {
-    const idCategoria = req.params.id; // Obtiene el número de la URL
+    const idCategoria = req.params.id;
     const query = 'SELECT * FROM productos WHERE categoria = ?';
 
     db.query(query, [idCategoria], (err, results) => {
@@ -46,11 +44,10 @@ router.get('/productos/categoria/:id', (req, res) => {
     });
 });
 
-// API para dar de alta un nuevo producto
+// Agregar producto
 router.post("/agregarProducto", (req, res) => {
     const { id, nombre, descripcion, precio, stock, imagen, categoria } = req.body;
 
-    // Validación: Todos los campos son obligatorios
     if (!id || !nombre || !descripcion || !precio || !stock || !imagen || !categoria) {
         return res.status(400).json({ message: "Todos los campos son obligatorios" });
     }
@@ -60,9 +57,7 @@ router.post("/agregarProducto", (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
-    db.query(
-        sql,
-        [id, nombre, descripcion, precio, stock, imagen, categoria],
+    db.query(sql, [id, nombre, descripcion, precio, stock, imagen, categoria],
         (err, result) => {
             if (err) {
                 console.error("Error al agregar el producto:", err);
@@ -70,7 +65,6 @@ router.post("/agregarProducto", (req, res) => {
                 if (err.code === "ER_DUP_ENTRY") {
                     return res.status(409).json({ message: "El ID ya existe, usa otro" });
                 }
-
                 return res.status(500).json({ message: "Error del servidor" });
             }
 
@@ -82,7 +76,7 @@ router.post("/agregarProducto", (req, res) => {
     );
 });
 
-//api para dar de baja un producto
+// Eliminar producto
 router.delete('/eliminarProducto/:id', (req, res) => {
     const { id } = req.params;
 
@@ -94,7 +88,6 @@ router.delete('/eliminarProducto/:id', (req, res) => {
             return res.status(500).json({ message: "Error del servidor al eliminar" });
         }
 
-        // Verificar si se eliminó alguna fila
         if (result.affectedRows === 0) {
             return res.status(404).json({ message: "Producto no encontrado" });
         }
@@ -103,12 +96,11 @@ router.delete('/eliminarProducto/:id', (req, res) => {
     });
 });
 
-//api para modificar un producto
+// Modificar producto
 router.put('/modificarProducto/:id', (req, res) => {
-    const { id } = req.params; // El ID viene de la URL
-    const { nombre, descripcion, precio, stock, imagen, categoria } = req.body; // Los datos nuevos vienen del cuerpo
+    const { id } = req.params;
+    const { nombre, descripcion, precio, stock, imagen, categoria } = req.body;
 
-    // Validación: Asegurarnos que envíen datos
     if (!nombre || !descripcion || !precio || !stock || !imagen || !categoria) {
         return res.status(400).json({ message: "Todos los campos son obligatorios para modificar" });
     }
@@ -119,16 +111,13 @@ router.put('/modificarProducto/:id', (req, res) => {
         WHERE id = ?
     `;
 
-    db.query(
-        sql, 
-        [nombre, descripcion, precio, stock, imagen, categoria, id], 
+    db.query(sql,[nombre, descripcion, precio, stock, imagen, categoria, id],
         (err, result) => {
             if (err) {
                 console.error("Error al modificar el producto:", err);
                 return res.status(500).json({ message: "Error del servidor al modificar" });
             }
 
-            // Verificar si se encontró el producto para modificarlo
             if (result.affectedRows === 0) {
                 return res.status(404).json({ message: "Producto no encontrado (revisa el ID)" });
             }
@@ -138,11 +127,10 @@ router.put('/modificarProducto/:id', (req, res) => {
     );
 });
 
-///
+// ========================
+// REGISTRO USUARIO (ya funcionaba)
+// ========================
 
-//
-// API para registrar un nuevo usuario y enviar correo de bienvenida
-// API para registrar un nuevo usuario usando RESEND
 router.post('/registrarUsuario', async (req, res) => {
     const { nombre, correo, id, password } = req.body;
 
@@ -155,138 +143,109 @@ router.post('/registrarUsuario', async (req, res) => {
         VALUES (?, ?, ?, ?, 'cliente')
     `;
 
-    // Hashear contraseña
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    db.query(
-        sql,
-        [nombre, correo, id, hashedPassword],
-        async (err, result) => {
+    db.query(sql,[nombre, correo, id, hashedPassword], async (err, result) => {
 
-            if (err) {
-                console.error("Error al registrar el usuario:", err);
+        if (err) {
+            console.error("Error al registrar el usuario:", err);
 
-                if (err.code === "ER_DUP_ENTRY") {
-                    return res.status(409).json({ message: "El ID ya existe, usa otro" });
-                }
-                return res.status(500).json({ message: "Error del servidor" });
+            if (err.code === "ER_DUP_ENTRY") {
+                return res.status(409).json({ message: "El ID ya existe, usa otro" });
             }
-
-            // ===========================
-            // 1) CONFIGURAR RESEND
-            // ===========================
-            const { Resend } = require("resend");
-            const resend = new Resend(process.env.RESEND_API_KEY);
-
-            // Ruta del logo
-            const logoPath = path.join(__dirname, "../public/img/logo.jpg");
-            const logoBase64 = require("fs").readFileSync(logoPath).toString("base64");
-
-            // ===========================
-            // 2) ENVÍO DEL CORREO
-            // ===========================
-            try {
-                await resend.emails.send({
-                    from: "SneakerClon5G <onboarding@resend.dev>",
-                    to: correo,
-                    subject: "¡Bienvenido a SNEAKERCLON5G!",
-                    html: `
-                        <div style="text-align:left;">
-                            <img src="cid:logoSneakers" style="width:150px; margin-bottom:20px;" />
-                        </div>
-                        <h2>Hola ${nombre} 👋</h2>
-                        <p>Gracias por registrarte a <b>SNEAKERCLON5G</b>.</p>
-                        <p><b>EL ORIGINAL ERES TÚ</b></p>
-                        <p>¡Gracias por unirte!</p>
-                    `,
-                    attachments: [
-                        {
-                            filename: "logo.jpg",
-                            content: logoBase64,
-                            cid: "logoSneakers"
-                        }
-                    ]
-                });
-
-                console.log("Correo enviado con RESEND a:", correo);
-
-            } catch (mailErr) {
-                console.error("Error al enviar correo con Resend:", mailErr);
-            }
-
-            // Respuesta al frontend
-            return res.json({
-                message: "Usuario registrado correctamente y correo enviado",
-                result
-            });
+            return res.status(500).json({ message: "Error del servidor" });
         }
-    );
+
+        // LOGO BASE64
+        const logoPath = path.join(__dirname, "../public/img/logo.jpg");
+        const logoBase64 = fs.readFileSync(logoPath).toString("base64");
+
+        // ENVÍO DE CORREO
+        try {
+            await resend.emails.send({
+                from: "SneakerClon5G <onboarding@resend.dev>",
+                to: correo,
+                subject: "¡Bienvenido a SNEAKERCLON5G!",
+                html: `
+                    <div style="text-align:left;">
+                        <img src="cid:logoSneakers" style="width:150px; margin-bottom:20px;" />
+                    </div>
+                    <h2>Hola ${nombre} 👋</h2>
+                    <p>Gracias por registrarte a <b>SNEAKERCLON5G</b>.</p>
+                    <p><b>EL ORIGINAL ERES TÚ</b></p>
+                    <p>¡Gracias por unirte!</p>
+                `,
+                attachments: [
+                    {
+                        filename: "logo.jpg",
+                        content: logoBase64,
+                        cid: "logoSneakers"
+                    }
+                ]
+            });
+
+        } catch (mailErr) {
+            console.error("Error al enviar correo con Resend:", mailErr);
+        }
+
+        return res.json({
+            message: "Usuario registrado correctamente y correo enviado",
+            result
+        });
+    });
 });
 
-//API para suscribir un usuario 
+// =========================================================
+// RESPONDER COMENTARIO — MIGRADO A RESEND
+// =========================================================
 
-
-// API para responder un comentario y enviar correo
 router.post('/responderComentario', async (req, res) => {
     const { correo, respuesta } = req.body;
 
-    // Validación
     if (!correo || !respuesta) {
         return res.status(400).json({ message: "El correo y la respuesta son obligatorios" });
     }
 
-    // 1) CONFIGURAR TRANSPORTER
-    const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-            user: "alejandro.cuabe@gmail.com",
-            pass: "xhdd ufyb amol xbbs"
-        }
-    });
-
-    // 2) RUTA DEL LOGO
     const logoPath = path.join(__dirname, "../public/img/logo.jpg");
+    const logoBase64 = fs.readFileSync(logoPath).toString("base64");
 
-    // 3) OPCIONES DEL CORREO
-    const mailOptions = {
-        from: '"Sneakers Clon 5G" <alejandro.cuabe@gmail.com>',
-        to: correo,
-        subject: "Respuesta a tu comentario - SNEAKERS CLON 5G",
-        html: `
-            <div style="text-align:left;">
-                <img src="cid:logoSneakers" alt="Logo" style="width:150px; margin-bottom:20px;" />
-            </div>
-            <h2>Hola 👋</h2>
-            <p>Gracias por ponerte en contacto con <b>Sneakers Clon 5G</b>.</p>
-            <p>¡EL ORIGINAL ERES TÚ!</p>
-            <p>Hemos recibido tu comentario</p>
-            <h1>En breve será atendido</h1>
-            <blockquote style="border-left:3px solid #4CAF50; padding-left:10px; color:#333;">
-            
-            </blockquote>
-            <p>Nos alegra que formes parte de nuestra comunidad.</p>
-            <p>¡Gracias por confiar en nosotros!</p>
-        `,
-        attachments: [
-            {
-                filename: "logo.jpg",
-                path: logoPath,
-                cid: "logoSneakers" // Content-ID para usar inline
-            }
-        ]
-    };
-
-    // 4) ENVIAR CORREO
     try {
-        await transporter.sendMail(mailOptions);
-        console.log("Respuesta enviada a:", correo);
+        await resend.emails.send({
+            from: "SneakerClon5G <onboarding@resend.dev>",
+            to: correo,
+            subject: "Respuesta a tu comentario - SNEAKERS CLON 5G",
+            html: `
+                <div style="text-align:left;">
+                    <img src="cid:logoSneakers" style="width:150px; margin-bottom:20px;" />
+                </div>
+                <h2>Hola 👋</h2>
+                <p>Gracias por ponerte en contacto con <b>Sneakers Clon 5G</b>.</p>
+                <p>¡EL ORIGINAL ERES TÚ!</p>
+                <h3>Tu respuesta:</h3>
+                <blockquote style="border-left:3px solid #4CAF50; padding-left:10px; color:#333;">
+                    ${respuesta}
+                </blockquote>
+            `,
+            attachments: [
+                {
+                    filename: "logo.jpg",
+                    content: logoBase64,
+                    cid: "logoSneakers"
+                }
+            ]
+        });
+
         return res.json({ message: "Respuesta enviada correctamente" });
     } catch (mailErr) {
         console.error("Error al enviar correo:", mailErr);
         return res.status(500).json({ message: "Error al enviar la respuesta" });
     }
 });
+
+// =========================================================
+// RECUPERAR CONTRASEÑA — MIGRADO A RESEND
+// =========================================================
 
 router.get('/verificarCorreo/:correo', async (req, res) => {
     const correo = req.params.correo;
@@ -298,20 +257,13 @@ router.get('/verificarCorreo/:correo', async (req, res) => {
             return res.status(500).json({ message: 'Error del servidor' });
         }
 
-        // SI EL CORREO NO EXISTE
         if (results.length === 0) {
             return res.json({ exists: false });
         }
 
-        // ================================
-        //  1) GENERAR CLAVE ALEATORIA
-        // ================================
-        const codigo = Math.floor(100000 + Math.random() * 900000); // Ej: 348192
+        const codigo = Math.floor(100000 + Math.random() * 900000);
 
-        // ================================
-        // 2) Guardar el código en la base de datos
         const sqlUpdate = "UPDATE usuarios SET codigo = ? WHERE correo = ?";
-
         db.query(sqlUpdate, [codigo, correo], async (updateErr) => {
             if (updateErr) {
                 console.error("Error al guardar el código:", updateErr);
@@ -319,65 +271,33 @@ router.get('/verificarCorreo/:correo', async (req, res) => {
             }
         });
 
-        // ================================
-        //  2) CONFIGURAR TRANSPORTER
-        // ================================
-        const transporter = nodemailer.createTransport({
-            service: "gmail",
-            auth: {
-                user: "alejandro.cuabe@gmail.com",
-                pass: "xhdd ufyb amol xbbs"
-            }
-        });
-
-        // ================================
-        //  3) RUTA DEL LOGO
-        // ================================
         const logoPath = path.join(__dirname, "../public/img/logo.jpg");
+        const logoBase64 = fs.readFileSync(logoPath).toString("base64");
 
-        // ================================
-        //  4) OPCIONES DEL CORREO
-        // ================================
-        const mailOptions = {
-            from: '"Sneakers Clon 5G" <alejandro.cuabe@gmail.com>',
-            to: correo,
-            subject: "Código de recuperación - SNEAKERS CLON 5G",
-            html: `
-                <div style="text-align:left;">
-                    <img src="cid:logoSneakers" alt="Logo" style="width:150px; margin-bottom:20px;" />
-                </div>
-                <h2>Recuperación de acceso</h2>
-                <p>Hola, hemos recibido una solicitud para recuperar tu acceso.</p>
-                <p>Tu código de verificación es:</p>
-
-                <h1 style="color:#4CAF50; letter-spacing:5px;">${codigo}</h1>
-
-                <p>Ingresa este código en la página de verificación.</p>
-                <p>Si tú no solicitaste esto, simplemente ignora este mensaje.</p>
-                <br>
-                <p><b>Sneakers Clon 5G</b></p>
-                <p>¡EL ORIGINAL ERES TÚ!</p>
-            `,
-            attachments: [
-                {
-                    filename: "logo.jpg",
-                    path: logoPath,
-                    cid: "logoSneakers"
-                }
-            ]
-        };
-
-        // ================================
-        //  5) ENVIAR CORREO
-        // ================================
         try {
-            await transporter.sendMail(mailOptions);
-            console.log("Código enviado a:", correo);
-
-            return res.json({
-                exists: true,
-                codigo: codigo // opcional por si quieres usarlo en frontend
+            await resend.emails.send({
+                from: "SneakerClon5G <onboarding@resend.dev>",
+                to: correo,
+                subject: "Código de recuperación - SNEAKERS CLON 5G",
+                html: `
+                    <div style="text-align:left;">
+                        <img src="cid:logoSneakers" style="width:150px; margin-bottom:20px;" />
+                    </div>
+                    <h2>Recuperación de acceso</h2>
+                    <p>Tu código de verificación es:</p>
+                    <h1 style="color:#4CAF50; letter-spacing:5px;">${codigo}</h1>
+                    <p>Ingresa este código en la página de verificación.</p>
+                `,
+                attachments: [
+                    {
+                        filename: "logo.jpg",
+                        content: logoBase64,
+                        cid: "logoSneakers"
+                    }
+                ]
             });
+
+            return res.json({ exists: true, codigo });
 
         } catch (mailErr) {
             console.error("Error al enviar código:", mailErr);
@@ -386,7 +306,10 @@ router.get('/verificarCorreo/:correo', async (req, res) => {
     });
 });
 
-//api que verifica el codigo que llega al correo con el de 
+// =============================
+// VERIFICAR CÓDIGO
+// =============================
+
 router.post('/verificarCodigo', (req, res) => {
     const {codigo } = req.body;
     const sql = 'SELECT * FROM usuarios WHERE codigo = ?';
@@ -403,12 +326,14 @@ router.post('/verificarCodigo', (req, res) => {
     });
 });
 
+// =============================
+// ACTUALIZAR PASSWORD
+// =============================
 
 router.put('/actualizarPassword', (req, res) => {
     console.log('✅ Entró a /actualizarPassword');
     const { codigo, newPassword, newPassword2 } = req.body;
 
-    // Mostrar en consola lo que llega del front
     console.log('Datos recibidos del frontend:', { codigo, newPassword, newPassword2 });
 
     if (newPassword !== newPassword2) {
@@ -434,11 +359,10 @@ router.put('/actualizarPassword', (req, res) => {
     });
 });
 
-// ============================================
-// RUTAS WISHLIST (FAVORITOS)
-// ============================================
+// =============================
+// WISHLIST
+// =============================
 
-// Obtener favoritos de un usuario
 router.get('/wishlist/:userId', (req, res) => {
     const userId = req.params.userId;
     
@@ -460,7 +384,6 @@ router.get('/wishlist/:userId', (req, res) => {
     });
 });
 
-// Agregar producto a favoritos
 router.post('/wishlist', (req, res) => {
     const { id_usuario, id_producto } = req.body;
     
@@ -485,7 +408,6 @@ router.post('/wishlist', (req, res) => {
     });
 });
 
-// Eliminar producto de favoritos
 router.delete('/wishlist/:userId/:productId', (req, res) => {
     const { userId, productId } = req.params;
     
@@ -505,7 +427,6 @@ router.delete('/wishlist/:userId/:productId', (req, res) => {
     });
 });
 
-// Contar favoritos de un usuario
 router.get('/wishlist/:userId/count', (req, res) => {
     const userId = req.params.userId;
     
@@ -519,5 +440,5 @@ router.get('/wishlist/:userId/count', (req, res) => {
         res.json({ count: results[0].total });
     });
 });
-//api para suscripcion a la pagina
+
 module.exports = router;
