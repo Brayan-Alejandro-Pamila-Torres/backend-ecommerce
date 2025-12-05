@@ -183,7 +183,8 @@ router.post('/registrarUsuario', async (req, res) => {
                 },
                 tls: {
                     rejectUnauthorized: false
-                }
+                },
+                family: 4   //<------ fuerza a railway a utilizar ipv4
             });
 
             // ===========================
