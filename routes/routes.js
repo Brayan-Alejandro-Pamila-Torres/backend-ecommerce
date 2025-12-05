@@ -3,12 +3,14 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/conexion');
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const authMiddleware = require("../middleware/authMiddleware");
 const salesController2 = require("../controllers/salesController2");
 
-
+// 2. Inicializar con la clave (automáticamente lee process.env.RESEND_API_KEY si no se la pasas, pero mejor ser explícitos)
+const resend = new Resend(process.env.RESEND_API_KEY);
 //ruta para obtener todos los productos
 
 router.get('/productos', (req, res) =>{
@@ -140,8 +142,8 @@ router.put('/modificarProducto/:id', (req, res) => {
 
 //
 // API para registrar un nuevo usuario y enviar correo de bienvenida
+// API para registrar un nuevo usuario usando RESEND
 router.post('/registrarUsuario', async (req, res) => {
-    
     const { nombre, correo, id, password } = req.body;
 
     if (!nombre || !correo || !id || !password) {
@@ -152,8 +154,8 @@ router.post('/registrarUsuario', async (req, res) => {
         INSERT INTO usuarios (nombre, correo, id, password, rol) 
         VALUES (?, ?, ?, ?, 'cliente')
     `;
-    // ============================================ Logica de encripatcion 
-    // Hashear la contraseña con bcrypt
+
+    // Hashear contraseña
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
@@ -161,6 +163,7 @@ router.post('/registrarUsuario', async (req, res) => {
         sql,
         [nombre, correo, id, hashedPassword],
         async (err, result) => {
+
             if (err) {
                 console.error("Error al registrar el usuario:", err);
 
@@ -171,65 +174,48 @@ router.post('/registrarUsuario', async (req, res) => {
             }
 
             // ===========================
-            // 1) CONFIGURAR TRANSPORTER
+            // 1) CONFIGURAR RESEND
             // ===========================
-            const transporter = nodemailer.createTransport({
-                host: "smtp.gmail.com",
-                port: 587, //puerto seguro de SSL
-                secure: false,
-                auth: {
-                    user: "alejandro.cuabe@gmail.com",
-                    pass: "xhdd ufyb amol xbbs",
-                },
-                tls: {
-                    rejectUnauthorized: false
-                },
-                family: 4   //<------ fuerza a railway a utilizar ipv4
-            });
+            const { Resend } = require("resend");
+            const resend = new Resend(process.env.RESEND_API_KEY);
 
-            // ===========================
-            // 2) RUTA DEL LOGO
-            // ===========================
+            // Ruta del logo
             const logoPath = path.join(__dirname, "../public/img/logo.jpg");
+            const logoBase64 = require("fs").readFileSync(logoPath).toString("base64");
 
             // ===========================
-            // 3) OPCIONES DEL CORREO
-            // ===========================
-        const mailOptions = {
-            from: '"Sneakers Clon 5G" <alejandro.cuabe@gmail.com>',
-            to: correo,
-            subject: "¡Bienvenido a SNEAKERCLON5G!",
-            html: `
-                <div style="text-align:left;">
-                <img src="cid:logoSneakers" alt="Logo" style="width:150px; margin-bottom:20px;" />
-                </div>
-                <h2>Hola ${nombre} 👋</h2>
-                <p>Gracias por registrarte a <b>SNEAKERCLON5G</b>.</p>
-                <p><b>EL ORIGINAL ERES TÚ</b></p>
-                <p>¡Gracias por unirte a nosotros!</p>
-            `,
-        attachments: [
-            {
-                filename: "logo.jpg",
-                path: logoPath,
-                cid: "logoSneakers"
-            }
-        ]
-    };
-
-            // ===========================
-            // 4) ENVIAR CORREO
+            // 2) ENVÍO DEL CORREO
             // ===========================
             try {
-                await transporter.sendMail(mailOptions);
-                console.log("Correo enviado a:", correo);
+                await resend.emails.send({
+                    from: "Sneakers Clon 5G <noreply@sneakerclon5g.com>",
+                    to: correo,
+                    subject: "¡Bienvenido a SNEAKERCLON5G!",
+                    html: `
+                        <div style="text-align:left;">
+                            <img src="cid:logoSneakers" style="width:150px; margin-bottom:20px;" />
+                        </div>
+                        <h2>Hola ${nombre} 👋</h2>
+                        <p>Gracias por registrarte a <b>SNEAKERCLON5G</b>.</p>
+                        <p><b>EL ORIGINAL ERES TÚ</b></p>
+                        <p>¡Gracias por unirte!</p>
+                    `,
+                    attachments: [
+                        {
+                            filename: "logo.jpg",
+                            content: logoBase64,
+                            cid: "logoSneakers"
+                        }
+                    ]
+                });
+
+                console.log("Correo enviado con RESEND a:", correo);
+
             } catch (mailErr) {
-                console.error("Error al enviar correo:", mailErr);
+                console.error("Error al enviar correo con Resend:", mailErr);
             }
 
-            // ===========================
-            // 5) RESPUESTA AL FRONT
-            // ===========================
+            // Respuesta al frontend
             return res.json({
                 message: "Usuario registrado correctamente y correo enviado",
                 result
@@ -237,6 +223,7 @@ router.post('/registrarUsuario', async (req, res) => {
         }
     );
 });
+
 //API para suscribir un usuario 
 
 
