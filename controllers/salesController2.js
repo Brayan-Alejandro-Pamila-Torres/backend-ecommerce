@@ -11,8 +11,9 @@ const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require ('path');
 const { Resend } = require("resend");
-const resend = new Resend(process.env.RESEND_API_KEY);
 
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Verificar stock sin modificar BD
 exports.verificarStock = async (req, res) => {
@@ -102,10 +103,10 @@ exports.pagar = async (req, res) => {
   }
 };
 // api para mandar el recibo por correo al cliente
+
+
 exports.enviarRecibo = async (req, res) => {
   try {
-    
-    // 1. Recibir datos (SIN CAMBIOS DE VARIABLES)
     const { ventaId } = req.body; 
 
     if (!ventaId) {
@@ -113,136 +114,108 @@ exports.enviarRecibo = async (req, res) => {
     }
 
     const correo = req.user.correo;
-    
-    // 2. Obtener venta (SIN CAMBIOS DE LÓGICA)
+
     const venta = await SalesModel.getVenta(ventaId);
     if (!venta) {
       return res.status(404).json({ ok: false, message: "Venta no encontrada" });
     }
 
-    // =========================================================
-    // 3. GENERACIÓN DEL PDF (AQUÍ ES DONDE ESTÁ EL DISEÑO)
-    // =========================================================
+    // ==========================
+    // GENERAR PDF
+    // ==========================
     const pdfPath = path.join(__dirname, `recibo_${ventaId}.pdf`);
     const doc = new PDFDocument({ margin: 50 });
     const stream = fs.createWriteStream(pdfPath);
-    
+
     doc.pipe(stream);
 
-    // --- RUTA DEL LOGO ---
-    // Asegúrate que esta imagen exista en tu carpeta public/img
     const logoPath = path.join(__dirname, "../public/img/logo.jpg");
-
-    // --- ENCABEZADO CON LOGO Y LEMA ---
     if (fs.existsSync(logoPath)) {
-        doc.image(logoPath, 50, 45, { width: 60 }); // Logo a la izquierda
+      doc.image(logoPath, 50, 45, { width: 60 });
     }
 
-    // Título de la empresa (A la derecha del logo)
     doc.font('Helvetica-Bold')
-       .fontSize(20)
-       .text('SNEAKERS CLON 5G', 120, 55); 
+      .fontSize(20)
+      .text('SNEAKERS CLON 5G', 120, 55);
 
-    // Lema (Debajo del título)
-    doc.font('Helvetica-Oblique') // Cursiva
-       .fontSize(10)
-       .fillColor('#555555') // Un gris elegante
-       .text('"EL ORIGINAL ERES TÚ"', 120, 80);
+    doc.font('Helvetica-Oblique')
+      .fontSize(10)
+      .fillColor('#555555')
+      .text('"EL ORIGINAL ERES TÚ"', 120, 80);
 
-    // Línea separadora
     doc.moveTo(50, 110).lineTo(550, 110).strokeColor('#aaaaaa').stroke();
 
-    // --- TÍTULO DEL DOCUMENTO ---
     doc.moveDown(4);
     doc.fillColor('black').font('Helvetica-Bold').fontSize(16)
-       .text('RECIBO DE COMPRA', { align: 'center' });
+      .text('RECIBO DE COMPRA', { align: 'center' });
     doc.moveDown();
 
-    // --- DETALLES DE LA VENTA ---
     doc.font('Helvetica').fontSize(12);
-    
-    // Usamos las variables que ya traes de tu base de datos (venta.nombre, venta.direccion, etc.)
+
     doc.text(`ID de Venta: #${ventaId}`, { align: 'right' });
     doc.text(`Fecha: ${new Date().toLocaleDateString()}`, { align: 'right' });
-    
+
     doc.moveDown();
     doc.font('Helvetica-Bold').text('Información del Cliente:');
     doc.font('Helvetica').text(`Nombre: ${venta.nombre}`);
     doc.text(`Dirección: ${venta.direccion}`);
     doc.text(`Ciudad: ${venta.ciudad}, CP: ${venta.cp}`);
-    doc.text(`Teléfono: ${venta.telefono}`); // Agregué teléfono que vi en tu BD
-    
+    doc.text(`Teléfono: ${venta.telefono}`);
+
     doc.moveDown();
     doc.font('Helvetica-Bold').text('Detalles del Pago:');
     doc.font('Helvetica');
     doc.text(`Método de Pago: ${venta.metodo_pago}`);
-    
-    // Si tienes envío, subtotal e impuestos en 'venta', puedes agregarlos aquí.
-    // Por seguridad, solo pondré el total que sé que ya funciona:
-    
-    doc.moveDown(2);
-    
-    // --- CUADRO DEL TOTAL ---
-    // Dibujar un rectángulo gris claro de fondo
-    doc.rect(50, doc.y, 500, 30).fill('#f0f0f0');
-    doc.fillColor('black'); // Volver a texto negro
-    
-    // Escribir el total encima del rectángulo (ajustamos Y ligeramente)
-    doc.font('Helvetica-Bold').fontSize(14)
-       .text(`TOTAL PAGADO: $${venta.total} MXN`, 60, doc.y - 22, { align: 'right' });
 
-    // --- PIE DE PÁGINA ---
+    doc.moveDown(2);
+
+    doc.rect(50, doc.y, 500, 30).fill('#f0f0f0');
+    doc.fillColor('black');
+
+    doc.font('Helvetica-Bold').fontSize(14)
+      .text(`TOTAL PAGADO: $${venta.total} MXN`, 60, doc.y - 22, { align: 'right' });
+
     doc.moveDown(4);
     doc.fontSize(10).font('Helvetica-Oblique').fillColor('grey')
-       .text('Gracias por tu preferencia.', { align: 'center' });
+      .text('Gracias por tu preferencia.', { align: 'center' });
 
     doc.end();
 
-    // =========================================================
-    // 4. ENVÍO DEL CORREO (ESPERAMOS A QUE TERMINE EL PDF)
-    // =========================================================
-    stream.on('finish', async () => {
-        try {
-            const transporter = nodemailer.createTransport({
-                service: 'gmail',
-                auth: {
-                    user: "alejandro.cuabe@gmail.com",
-                    pass: "xhdd ufyb amol xbbs"
-                }
-            });
+    // ==========================
+    // ENVÍO CON RESEND
+    // ==========================
+    stream.on("finish", async () => {
+      try {
+        const pdfBuffer = fs.readFileSync(pdfPath);
+        const pdfBase64 = pdfBuffer.toString("base64");
 
-            await transporter.sendMail({
-                from: '"Sneakers Clon 5G" <alejandro.cuabe@gmail.com>',
-                to: correo,
-                subject: `Recibo de compra #${ventaId}`,
-                // Usamos HTML en el cuerpo del correo también para que se vea bien
-                html: `
-                    <h2>¡Gracias por tu compra!</h2>
-                    <p>Hola <b>${venta.nombre}</b>, adjuntamos tu recibo de compra.</p>
-                    <p><i>"EL ORIGINAL ERES TÚ"</i></p>
-                    <p>Atte: <b>SNEAKERS CLON 5G</b></p>
-                `,
-                attachments: [
-                    {
-                        filename: `recibo_${ventaId}.pdf`,
-                        path: pdfPath
-                    }
-                ]
-            });
+        await resend.emails.send({
+          from: "SneakerClon5G <onboarding@resend.dev>",
+          to: correo,
+          subject: `Recibo de compra #${ventaId}`,
+          html: `
+            <h2>¡Gracias por tu compra!</h2>
+            <p>Hola <b>${venta.nombre}</b>, adjuntamos tu recibo de compra.</p>
+            <p><i>"EL ORIGINAL ERES TÚ"</i></p>
+            <p>Atte: <b>SNEAKERS CLON 5G</b></p>
+          `,
+          attachments: [
+            {
+              filename: `recibo_${ventaId}.pdf`,
+              content: pdfBase64,
+              encoding: "base64"
+            }
+          ]
+        });
 
-            // Borrar el archivo temporal
-            fs.unlinkSync(pdfPath);
+        fs.unlinkSync(pdfPath);
 
-            console.log("✅ Recibo enviado correctamente.");
-            return res.json({
-                ok: true,
-                message: "Recibo enviado correctamente al cliente"
-            });
+        return res.json({ ok: true, message: "Recibo enviado correctamente al cliente" });
 
-        } catch (errorCorreo) {
-            console.error("Error enviando email:", errorCorreo);
-            return res.status(500).json({ ok: false, message: "Error enviando el email" });
-        }
+      } catch (err) {
+        console.error("Error enviando email:", err);
+        return res.status(500).json({ ok: false, message: "Error enviando el email" });
+      }
     });
 
   } catch (err) {
@@ -254,87 +227,61 @@ exports.enviarRecibo = async (req, res) => {
 //api para suscripcion 
 exports.suscribir = async (req, res) => {
   try {
-  const correo = req.user.correo; // viene del token JWT
+    const correo = req.user.correo;
 
-    if (!correo) {
-      return res.status(400).json({ ok: false, message: "Usuario no válido" });
-    }
+    if (!correo) return res.status(400).json({ ok: false, message: "Usuario no válido" });
 
     const user = await SalesModel2.getUserByCorreo(correo);
 
-    if (!user) {
-      return res.status(404).json({ ok: false, message: "Usuario no encontrado" });
-    }
+    if (!user) return res.status(404).json({ ok: false, message: "Usuario no encontrado" });
 
     if (user.suscrito === 1) {
-      // 👇 IMPORTANTE: este return evita que siga ejecutando
       return res.json({ ok: false, message: "Ya estás suscrito" });
     }
 
     await SalesModel2.suscribirUsuarioPorCorreo(correo);
 
-    // ===========================
-    // 1) CONFIGURAR TRANSPORTER
-    // ===========================
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: "alejandro.cuabe@gmail.com",
-        pass: "xhdd ufyb amol xbbs"
-      }
-    });
-
-    // ===========================
-    // 2) RUTA DEL CUPÓN Y LOGO
-    // ===========================
+    // ==========================
+    // LEER LOGO Y CUPÓN EN BASE64
+    // ==========================
     const cuponPath = path.join(__dirname, "../public/img/cupon.png");
     const logoPath = path.join(__dirname, "../public/img/logo.jpg");
 
-    // ===========================
-    // 3) OPCIONES DEL CORREO
-    // ===========================
-    const mailOptions = {
-      from: '"Sneakers Clon 5G" <alejandro.cuabe@gmail.com>',
+    const cuponBase64 = fs.readFileSync(cuponPath).toString("base64");
+    const logoBase64 = fs.readFileSync(logoPath).toString("base64");
+
+
+    // ==========================
+    // ENVIAR CON RESEND
+    // ==========================
+    await resend.emails.send({
+      from: "SneakerClon5G <onboarding@resend.dev>",
       to: correo,
       subject: "¡Gracias por suscribirte a SNEAKERS CLON 5G!",
       html: `
         <div style="text-align:left;">
-          <img src="cid:logoSneakers" alt="Logo" style="width:150px; margin-bottom:20px;" />
+          <img src="cid:logoSneakers" style="width:150px;margin-bottom:20px;">
         </div>
         <h2>Hola ${user.nombre} 👋</h2>
         <p>Gracias por suscribirte a <b>Sneakers Clon 5G</b>.</p>
         <p><i>"EL ORIGINAL ERES TÚ"</i></p>
-        <p>Como agradecimiento, aquí tienes un cupón especial:</p>
+        <p>Aquí tienes tu cupón exclusivo:</p>
         <p><b>🎁 CUPÓN DE DESCUENTO ESPECIAL</b></p>
-        <p>Utilízalo en tu próxima compra.</p>
-        <p>¡Gracias por confiar en nosotros!</p>
       `,
       attachments: [
         {
           filename: "cupon.png",
-          path: cuponPath,
+          content: cuponBase64,
+          encoding: "base64"
         },
         {
           filename: "logo.jpg",
-          path: logoPath,
-          cid: "logoSneakers"
+          content: logoBase64,
+          encoding: "base64"
         }
       ]
-    };
+    });
 
-    // ===========================
-    // 4) ENVIAR CORREO
-    // ===========================
-    try {
-      await transporter.sendMail(mailOptions);
-      console.log("Correo de suscripción enviado a:", correo);
-    } catch (mailErr) {
-      console.error("Error al enviar correo de suscripción:", mailErr);
-    }
-
-    // ===========================
-    // 5) RESPUESTA AL FRONT
-    // ===========================
     return res.json({ ok: true, message: "Suscripción activada correctamente y correo enviado" });
 
   } catch (err) {
