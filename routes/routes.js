@@ -178,8 +178,8 @@ router.post('/registrarUsuario', async (req, res) => {
                 port: 465, //puerto seguro de SSL
                 secure: true,
                 auth: {
-                    user: process.env.EMAIL_USER,
-                    pass: process.env.EMAIL_PASS,
+                    user: "alejandro.cuabe@gmail.com",
+                    pass: "xhdd ufyb amol xbbs",
                 },
                 tls: {
                     rejectUnauthorized: false
