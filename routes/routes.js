@@ -175,8 +175,8 @@ router.post('/registrarUsuario', async (req, res) => {
             // ===========================
             const transporter = nodemailer.createTransport({
                 host: "smtp.gmail.com",
-                port: 465, //puerto seguro de SSL
-                secure: true,
+                port: 587, //puerto seguro de SSL
+                secure: false,
                 auth: {
                     user: "alejandro.cuabe@gmail.com",
                     pass: "xhdd ufyb amol xbbs",
