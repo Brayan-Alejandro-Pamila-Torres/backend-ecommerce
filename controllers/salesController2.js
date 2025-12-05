@@ -10,6 +10,9 @@ const PDFDocument = require('pdfkit');
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require ('path');
+const { Resend } = require("resend");
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 
 // Verificar stock sin modificar BD
 exports.verificarStock = async (req, res) => {
